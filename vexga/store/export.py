@@ -54,9 +54,25 @@ def match_json(match_id: int, game_name: str = "pushback") -> dict:
         "tracks": tracks,
         "zone_states": zones,
         "score_timeline": scores,
-        "youtube": {"video_id": (m["video_id"] or "").split("_")[0],
-                    "start_ts": m["video_start_ts"]},
+        "youtube": _youtube_ref(con, m),
     }
+
+
+def _youtube_ref(con, m) -> dict:
+    """YouTube id + timestamp for a match, resolving clip videos back to
+    their source VOD (clips note their origin as 'src=<vid>@<ts>')."""
+    import re
+
+    vid = m["video_id"] or ""
+    ts = m["video_start_ts"]
+    src = con.execute("SELECT source_id FROM videos WHERE id=?", (vid,)).fetchone()
+    if src and src["source_id"]:
+        hit = re.search(r"src=(\S+)@(\d+)", m["notes"] or "")
+        if hit:
+            vid, ts = hit.group(1), float(hit.group(2))
+        else:
+            vid = src["source_id"]
+    return {"video_id": vid.split("_")[0], "start_ts": ts}
 
 
 def export_match_json(match_id: int, out_dir: Path | None = None) -> Path:

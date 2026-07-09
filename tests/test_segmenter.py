@@ -42,7 +42,10 @@ def test_full_match():
     assert len(sm.done) == 1
     m = sm.done[0]
     assert m.name == "Q3"
-    assert m.red_teams == ["1234A"] and m.blue_teams == ["5678B"]
+    assert m.top_teams("red") == ["1234A"] and m.top_teams("blue") == ["5678B"]
+    # A rare misread loses the vote to the dominant correct read.
+    m.red_teams.extend(["12344A", "1234A", "1234A"])
+    assert m.top_teams("red")[0] == "1234A"
     assert abs((m.auton_end_ts - m.start_ts) - 15) <= 2
     assert abs((m.end_ts - m.start_ts) - 120) <= 2
     assert m.scores[-1][1] == 21 and m.scores[-1][2] == 10

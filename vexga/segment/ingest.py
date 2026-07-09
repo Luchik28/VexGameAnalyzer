@@ -38,8 +38,8 @@ def store_spans(con, video_id: str, spans: list[MatchSpan],
     ids = []
     for sp in spans:
         card = by_name.get(_canon(sp.name))
-        red = (sp.red_teams + (card.red_teams if card else []) + [None] * 2)[:2]
-        blue = (sp.blue_teams + (card.blue_teams if card else []) + [None] * 2)[:2]
+        red = (sp.top_teams("red", card.red_teams if card else None) + [None] * 2)[:2]
+        blue = (sp.top_teams("blue", card.blue_teams if card else None) + [None] * 2)[:2]
         # Result card is authoritative; otherwise median of the last few
         # timeline readings (a single OCR glitch shouldn't set the final).
         ocr_red = card.red_score if card else _tail_median(sp.scores, 1)

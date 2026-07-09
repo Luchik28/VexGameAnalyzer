@@ -17,8 +17,9 @@ CREATE TABLE IF NOT EXISTS events (
     sku TEXT, name TEXT, season TEXT, start_date TEXT
 );
 CREATE TABLE IF NOT EXISTS videos (
-    id TEXT PRIMARY KEY,              -- youtube id (+ optional section suffix)
+    id TEXT PRIMARY KEY,              -- youtube id, or m<match> for a clip
     event_id INTEGER REFERENCES events(id),
+    source_id TEXT,                   -- for clips: the original VOD's video id
     division TEXT, path TEXT, title TEXT, duration_s REAL, fps REAL,
     width INTEGER, height INTEGER
 );
@@ -76,4 +77,9 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    # Additive migrations for DBs created before a column existed.
+    try:
+        con.execute("ALTER TABLE videos ADD COLUMN source_id TEXT")
+    except sqlite3.OperationalError:
+        pass
     return con

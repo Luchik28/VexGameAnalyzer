@@ -30,11 +30,23 @@ class MatchSpan:
     start_ts: float                 # video ts of auton start (t=0)
     auton_end_ts: float | None
     end_ts: float | None
+    # Raw per-sample team observations (duplicates kept for majority voting).
     red_teams: list[str] = field(default_factory=list)
     blue_teams: list[str] = field(default_factory=list)
     scores: list[tuple[float, int | None, int | None]] = field(default_factory=list)
     result: ResultCard | None = None
     notes: str = ""
+
+    def top_teams(self, alliance: str, extra: list[str] | None = None,
+                  extra_weight: int = 5) -> list[str]:
+        """The two most-voted team numbers for an alliance. `extra` (e.g.
+        result-card reads, which are large clean text) votes with weight."""
+        from collections import Counter
+
+        votes = Counter(self.red_teams if alliance == "red" else self.blue_teams)
+        for t in extra or []:
+            votes[t] += extra_weight
+        return [t for t, _n in votes.most_common(2)]
 
 
 class MatchStateMachine:
@@ -134,12 +146,10 @@ class MatchStateMachine:
         assert self.current is not None
         if s.match_name and not self.current.name:
             self.current.name = s.match_name
-        for team in s.red_teams:
-            if team not in self.current.red_teams:
-                self.current.red_teams.append(team)
-        for team in s.blue_teams:
-            if team not in self.current.blue_teams:
-                self.current.blue_teams.append(team)
+        # Keep every observation (duplicates included): with no RobotEvents
+        # to correct OCR, team numbers are decided by majority vote later.
+        self.current.red_teams.extend(s.red_teams)
+        self.current.blue_teams.extend(s.blue_teams)
         if s.red_score is not None or s.blue_score is not None:
             self.current.scores.append(
                 (s.video_ts - self.current.start_ts, s.red_score, s.blue_score))

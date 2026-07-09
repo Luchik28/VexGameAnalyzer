@@ -14,7 +14,21 @@ def calibration_for(con, video_id: str, ts: float) -> Calibration | None:
         "SELECT homography, reproj_err_in FROM calibrations WHERE video_id=? AND from_ts<=?"
         " ORDER BY from_ts DESC LIMIT 1", (video_id, ts)
     ).fetchone()
-    return Calibration.from_json(row["homography"], row["reproj_err_in"]) if row else None
+    if row is None:
+        # Clips inherit the calibration of the VOD they were cut from
+        # (same camera). Calibrating any one clip covers its siblings.
+        src = con.execute("SELECT source_id FROM videos WHERE id=?", (video_id,)).fetchone()
+        if src and src["source_id"]:
+            rows = con.execute(
+                "SELECT c.homography, c.reproj_err_in FROM calibrations c"
+                " LEFT JOIN videos v ON v.id = c.video_id"
+                " WHERE c.video_id = ? OR v.source_id = ? ORDER BY c.from_ts LIMIT 1",
+                (src["source_id"], src["source_id"]),
+            ).fetchone()
+            if rows:
+                return Calibration.from_json(rows["homography"], rows["reproj_err_in"])
+        return None
+    return Calibration.from_json(row["homography"], row["reproj_err_in"])
 
 
 def process_matches(weights: str, game_name: str = "pushback",
