@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VexGA Match Replay</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 14px/1.4 -apple-system, sans-serif; background: #14161a; color: #e8e8e8;
+         display: grid; grid-template-columns: minmax(480px, 1fr) 380px; gap: 16px; padding: 16px; }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  #left { display: flex; flex-direction: column; gap: 8px; }
+  canvas { width: 100%; aspect-ratio: 1; background: #3a3d42; border-radius: 8px; }
+  #controls { display: flex; gap: 8px; align-items: center; }
+  #scrub { flex: 1; }
+  button, select, input[type=file] { background: #24272c; color: #e8e8e8; border: 1px solid #3a3d42;
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  #side > div { background: #1c1f24; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { padding: 2px 6px; text-align: right; } th { color: #999; }
+  td:first-child, th:first-child { text-align: left; }
+  .red { color: #ff6b60; } .blue { color: #62a8ff; }
+  #meta { font-size: 12px; color: #aaa; white-space: pre-line; }
+  #yt { width: 100%; aspect-ratio: 16/9; border: 0; border-radius: 8px; }
+</style>
+</head>
+<body>
+<div id="left">
+  <h1 id="title">VexGA Match Replay — open a match_*.json</h1>
+  <canvas id="field" width="900" height="900"></canvas>
+  <div id="controls">
+    <input type="file" id="file" accept=".json">
+    <button id="play">▶</button>
+    <input type="range" id="scrub" min="0" max="120" step="0.2" value="0">
+    <span id="clock">0:00</span>
+    <select id="speed"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select>
+  </div>
+</div>
+<div id="side">
+  <div><div id="meta">no match loaded</div></div>
+  <div><h1>Zone blocks (red / blue)</h1><table id="zones"></table></div>
+  <div><iframe id="yt" allow="autoplay"></iframe></div>
+</div>
+<script>
+"use strict";
+const cv = document.getElementById("field"), ctx = cv.getContext("2d");
+let M = null, t = 0, playing = false, lastFrame = 0;
+
+const SLOT_COLORS = { red1: "#e53935", red2: "#ff8a65", blue1: "#1e88e5", blue2: "#81d4fa" };
+
+function px(v) { return v / M.game.field_size * cv.width; }
+function py(v) { return cv.height - v / M.game.field_size * cv.height; }  // y up -> canvas y down
+
+function sampleAt(track, t) {
+  if (!track || !track.length) return null;
+  let lo = 0, hi = track.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; (track[mid][0] < t) ? lo = mid + 1 : hi = mid; }
+  return track[Math.max(0, lo - (track[lo][0] > t ? 1 : 0))];
+}
+
+function zoneFill(kind, name) {
+  if (kind === "park") return name.includes("red") ? "rgba(229,57,53,.25)" : "rgba(30,136,229,.25)";
+  if (kind === "goal") return "rgba(76,175,80,.30)";
+  if (kind === "loader") return "rgba(255,235,59,.12)";
+  return "rgba(255,255,255,.05)";
+}
+
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!M) return;
+  const F = M.game.field_size;
+  // tiles
+  ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 1;
+  for (let i = 0; i <= 6; i++) {
+    const c = i * F / 6;
+    ctx.beginPath(); ctx.moveTo(px(c), py(0)); ctx.lineTo(px(c), py(F)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px(0), py(c)); ctx.lineTo(px(F), py(c)); ctx.stroke();
+  }
+  // auton line
+  ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.setLineDash([8, 6]);
+  ctx.beginPath(); ctx.moveTo(px(F/2), py(0)); ctx.lineTo(px(F/2), py(F)); ctx.stroke();
+  ctx.setLineDash([]);
+  // zones
+  for (const z of M.game.zones) {
+    ctx.beginPath();
+    z.polygon.forEach(([x, y], i) => i ? ctx.lineTo(px(x), py(y)) : ctx.moveTo(px(x), py(y)));
+    ctx.closePath();
+    ctx.fillStyle = zoneFill(z.kind, z.name); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.2)"; ctx.stroke();
+  }
+  // trails (last 10 s) + robots
+  for (const [slot, track] of Object.entries(M.tracks)) {
+    ctx.strokeStyle = SLOT_COLORS[slot] + "88"; ctx.lineWidth = 2; ctx.beginPath();
+    let started = false;
+    for (const [tt, x, y] of track) {
+      if (tt > t) break;
+      if (tt < t - 10) continue;
+      started ? ctx.lineTo(px(x), py(y)) : ctx.moveTo(px(x), py(y)); started = true;
+    }
+    ctx.stroke();
+    const s = sampleAt(track, t);
+    if (!s) continue;
+    const [, x, y, conf] = s;
+    ctx.beginPath(); ctx.arc(px(x), py(y), 16, 0, 7);
+    ctx.fillStyle = SLOT_COLORS[slot]; ctx.globalAlpha = conf > 0 ? 1 : 0.45; ctx.fill();
+    ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "11px sans-serif";
+    const team = M.match[slot];
+    ctx.fillText(team || slot, px(x), py(y) - 20);
+  }
+  // period banner
+  ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.font = "16px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText(t <= M.game.auton_seconds ? "AUTON" : "DRIVER", 12, 24);
+  updateSide();
+}
+
+function updateSide() {
+  const tbl = document.getElementById("zones");
+  let html = "<tr><th>zone</th><th class=red>red</th><th class=blue>blue</th></tr>";
+  for (const [name, series] of Object.entries(M.zone_states || {})) {
+    const s = sampleAt(series, t);
+    if (s) html += `<tr><td>${name}</td><td class=red>${s[1]}</td><td class=blue>${s[2]}</td></tr>`;
+  }
+  tbl.innerHTML = html;
+  const mm = Math.floor(t / 60), ss = String(Math.floor(t % 60)).padStart(2, "0");
+  document.getElementById("clock").textContent = `${mm}:${ss}`;
+  document.getElementById("scrub").value = t;
+}
+
+function load(data) {
+  M = data;
+  const m = M.match;
+  document.getElementById("title").textContent =
+    `${m.name || "match " + m.id} — red ${m.red1 || "?"}/${m.red2 || "?"} vs blue ${m.blue1 || "?"}/${m.blue2 || "?"}`;
+  document.getElementById("meta").textContent =
+    `official score: ${m.red_score ?? "?"} - ${m.blue_score ?? "?"}\n` +
+    `quality: ${m.quality?.toFixed?.(2) ?? "?"}   notes: ${m.notes || ""}\n` +
+    `video: ${m.video_id} @ ${Math.round(m.video_start_ts)}s`;
+  const dur = (m.video_end_ts && m.video_start_ts) ? m.video_end_ts - m.video_start_ts : 120;
+  document.getElementById("scrub").max = dur;
+  if (M.youtube?.video_id) {
+    document.getElementById("yt").src =
+      `https://www.youtube.com/embed/${M.youtube.video_id}?start=${Math.floor(M.youtube.start_ts || 0)}`;
+  }
+  t = 0; draw();
+}
+
+document.getElementById("file").addEventListener("change", async e => {
+  if (e.target.files[0]) load(JSON.parse(await e.target.files[0].text()));
+});
+document.getElementById("scrub").addEventListener("input", e => { t = +e.target.value; draw(); });
+document.getElementById("play").addEventListener("click", () => {
+  playing = !playing;
+  document.getElementById("play").textContent = playing ? "⏸" : "▶";
+  lastFrame = performance.now();
+  if (playing) requestAnimationFrame(tick);
+});
+function tick(now) {
+  if (!playing || !M) return;
+  t += (now - lastFrame) / 1000 * +document.getElementById("speed").value;
+  lastFrame = now;
+  const max = +document.getElementById("scrub").max;
+  if (t >= max) { t = max; playing = false; document.getElementById("play").textContent = "▶"; }
+  draw();
+  if (playing) requestAnimationFrame(tick);
+}
+// ?match=data/exports/matches/match_1.json when served over http
+const q = new URLSearchParams(location.search).get("match");
+if (q) fetch(q).then(r => r.json()).then(load).catch(() => {});
+</script>
+</body>
+</html>

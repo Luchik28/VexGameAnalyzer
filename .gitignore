@@ -1,0 +1,10 @@
+.venv/
+data/
+models/*.pt
+__pycache__/
+*.pyc
+.env
+.DS_Store
+runs/
+.ipynb_checkpoints/
+.claude/scheduled_tasks.lock

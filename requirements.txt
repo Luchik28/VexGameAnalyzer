@@ -1,0 +1,14 @@
+ultralytics
+yt-dlp
+yt-dlp-ejs
+imageio-ffmpeg
+polars
+duckdb
+scikit-learn
+requests
+python-dotenv
+lapx
+pypdf
+pymupdf
+matplotlib
+pyobjc-framework-Vision
