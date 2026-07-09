@@ -1,5 +1,8 @@
 # VexGameAnalyzer
 
+A pipeline (that runs locally) that takes in livestreams of Vexv5 tournaments (currently it's for Pushback, but could easily be modified for other games), turns them into per match data (keeping track of which robot/game element was where), and then uses it to form insights into how the matches are played
+
+
 Local pipeline that turns VEX V5RC tournament livestream VODs into per-match
 spatiotemporal data — robot positions, robot archetypes, zone/goal states —
 and mines it for strategy insights. Built on Push Back (2025-26); swapping in
@@ -15,7 +18,7 @@ RobotEvents API ─▶ official schedules/results joined by match number
 [track]     ByteTrack + starting-tile identity → per-team tracks @5 Hz
 [store]     SQLite + parquet    [classify] robot archetypes per team-event
 [viewer]    2D canvas replay    [analytics] heatmaps · win-conditions · clusters · scouting
-```
+````
 
 ## Setup
 
