@@ -72,7 +72,9 @@ def _youtube_ref(con, m) -> dict:
             vid, ts = hit.group(1), float(hit.group(2))
         else:
             vid = src["source_id"]
-    return {"video_id": vid.split("_")[0], "start_ts": ts}
+    # Strip local suffixes: section ranges (_10000_12000) and stray format
+    # parts (.f398) so the id is embeddable.
+    return {"video_id": vid.split("_")[0].split(".")[0], "start_ts": ts}
 
 
 def export_match_json(match_id: int, out_dir: Path | None = None) -> Path:

@@ -32,7 +32,10 @@ YTDLP = [sys.executable, "-m", "yt_dlp", "-4"] + (
     ["--js-runtimes", f"node:{_NODE}", "--remote-components", "ejs:github"]
     if _NODE else []
 )
-FORMAT = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b[height<=720]"
+# Video-only on purpose: the pipeline never uses audio (OCR + CV), it saves
+# ~0.5 GB per VOD, and single-format downloads need no ffmpeg merge (which
+# yt-dlp can't do here anyway - imageio's ffmpeg binary name isn't detected).
+FORMAT = "bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]"
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -82,10 +85,15 @@ def download(url: str, section: str | None = None, force: bool = False) -> Path:
     if section:
         cmd += ["--download-sections", f"*{section}", "--force-keyframes-at-cuts"]
     subprocess.run(cmd, check=True)  # stream output; failures raise
-    if not dest.exists():  # yt-dlp may emit .mkv/.webm if mp4 mux fails
+    if not dest.exists():  # yt-dlp may emit .mkv/.webm, or leave .fNNN parts
         candidates = list(VIDEOS.glob(f"{vid}{suffix}.*"))
         media = [c for c in candidates if c.suffix in (".mp4", ".mkv", ".webm")]
         if not media:
             raise FileNotFoundError(f"download produced no media file for {url}")
-        dest = media[0]
+        # Normalize a lone format-part (e.g. <id>.f398.mp4) to the clean name
+        # so video ids in the DB stay equal to the youtube id.
+        media[0].rename(dest.with_suffix(media[0].suffix))
+        dest = dest.with_suffix(media[0].suffix)
+    for orphan in VIDEOS.glob(f"{vid}{suffix}.f*.*"):
+        orphan.unlink()  # audio/video parts that never merged
     return dest
