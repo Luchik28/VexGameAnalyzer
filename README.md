@@ -1,12 +1,8 @@
 # VexGameAnalyzer
 
-A pipeline (that runs locally) that takes in livestreams of Vexv5 tournaments (currently it's for Pushback, but could easily be modified for other games), turns them into per match data (keeping track of which robot/game element was where), and then uses it to form insights into how the matches are played
+A pipeline that takes in livestreams of Vex V5 robotics tournaments, turns them into per match data (keeping track of which robot/game element was where), and then uses it to form insights into how the matches are played.
 
-
-Local pipeline that turns VEX V5RC tournament livestream VODs into per-match
-spatiotemporal data — robot positions, robot archetypes, zone/goal states —
-and mines it for strategy insights. Built on Push Back (2025-26); swapping in
-a new season (Override) is a config + relabeled dataset, not a rewrite.
+It's currently trained on Pushback, since there's a lot of matches for it available, but I'll get it set up for Override when more matches become available (Probably sometime after MOA)
 
 ## How it works
 
@@ -80,14 +76,18 @@ $V -c "from vexga.analytics.insights import win_condition_analysis; print(win_co
 - `data/` (gitignored) — videos, frames, datasets, sqlite db, exports.
 - `models/` — trained weights + archetype seed labels.
 
-## Performance notes (M1, 16GB)
+## Performance notes
 
-- Close Jupyter/heavy apps before training or batch tracking: under memory
+- I am running this on a 2021 M1 iMac with 16 Gbs of RAM. It takes 
+  a long time, but it's not too bad. Make sure you have
+  a good amount of storage open, though (at least 20-30GB) to
+  store everything.
+- Close heavy apps/tabs before running training; under memory
   pressure torch imports take 1-2 min and the first MPS inference minutes.
 - The OCR segmenter and the motion-based dry-run tracker are pure
   CPU/OpenCV/Vision and stay fast regardless.
 - `vexga/track/dryrun.py` runs the full tracking path with the motion
-  detector (no trained weights needed) — use it to sanity-check new events
+  detector (no trained weights needed) — use it to check new events
   before spending a night on training.
 
 ## New season runbook (Override)
