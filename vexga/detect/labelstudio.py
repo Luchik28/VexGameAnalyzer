@@ -72,3 +72,5 @@ def yolo_to_tasks(dataset_dir: Path, game: GameConfig) -> Path:
     (dataset_dir / "labeling_config.xml").write_text(labeling_config(game))
     print(f"{len(tasks)} tasks -> {out}")
     return out
+
+
