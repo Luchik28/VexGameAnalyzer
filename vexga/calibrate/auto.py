@@ -96,11 +96,29 @@ def _order_quad(quad: np.ndarray, frame: np.ndarray) -> np.ndarray | None:
     return ordered
 
 
-def auto_calibrate(frame: np.ndarray, game: GameConfig) -> Calibration | None:
+def _park_zone_redness(frame: np.ndarray, cal: Calibration, game: GameConfig) -> float:
+    """Red-minus-blue pixel mass inside the projected RED park zone footprint.
+    Positive = orientation correct, negative = mirrored."""
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    red_m = cv2.inRange(hsv, RED_LO_1, RED_HI_1) | cv2.inRange(hsv, RED_LO_2, RED_HI_2)
+    blue_m = cv2.inRange(hsv, BLUE_LO, BLUE_HI)
+    zone = next(z for z in game.zones if z.name == "park_red")
+    poly = cal.to_pixel(np.array(zone.polygon, dtype=np.float64)).astype(np.int32)
+    mask = np.zeros(frame.shape[:2], np.uint8)
+    cv2.fillPoly(mask, [poly], 255)
+    return float(int((red_m & mask).sum()) - int((blue_m & mask).sum()))
+
+
+def auto_calibrate(frame: np.ndarray, game: GameConfig,
+                   orient_frame: np.ndarray | None = None) -> Calibration | None:
+    """`orient_frame` (e.g. a median background frame where moving blocks are
+    gone) is used for red/blue orientation when given; park zones are static,
+    so the median frame disambiguates where a single frame can be fooled by a
+    cluster of red blocks."""
     quad = _floor_quad(frame)
     if quad is None:
         return None
-    ordered = _order_quad(quad, frame)
+    ordered = _order_quad(quad, orient_frame if orient_frame is not None else frame)
     if ordered is None:
         return None
     f = game.field_size
@@ -110,4 +128,11 @@ def auto_calibrate(frame: np.ndarray, game: GameConfig) -> Calibration | None:
     center_px = cal.to_pixel(np.array([[f / 2, f / 2]]))[0]
     if not cv2.pointPolygonTest(quad.astype(np.float32), tuple(center_px), False) >= 0:
         return None
+    # Orientation self-check on the projected red park zone; flip if mirrored.
+    check = orient_frame if orient_frame is not None else frame
+    if _park_zone_redness(check, cal, game) < 0:
+        flipped = np.array([ordered[1], ordered[0], ordered[3], ordered[2]])
+        cal = fit(flipped, field)
+        if _park_zone_redness(check, cal, game) < 0:
+            return None  # can't establish orientation confidently
     return cal
