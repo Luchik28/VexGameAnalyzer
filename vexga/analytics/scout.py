@@ -39,7 +39,7 @@ def team_positions(con, team: str) -> dict[int, np.ndarray]:
     return {k: np.array(v) for k, v in out.items()}
 
 
-def render_team(team: str, game_name: str = "pushback") -> Path | None:
+def render_team(team: str, game_name: str = "pushback", rm=None) -> Path | None:
     game = get_game(game_name)
     con = connect()
     pos = team_positions(con, team)
@@ -67,7 +67,8 @@ def render_team(team: str, game_name: str = "pushback") -> Path | None:
     axes[1].set_title("autonomous routes (dot = start)", fontsize=9, color=INK)
     heat_png = _png(fig)
 
-    rm = robot_match_features(game)
+    if rm is None:
+        rm = robot_match_features(game)  # callers doing many teams pass it in
     mine = rm.filter(rm["team"] == team) if not rm.is_empty() else rm
     arch = con.execute("SELECT archetype, archetype_conf FROM team_robots WHERE team=?",
                        (team,)).fetchone()
@@ -115,8 +116,9 @@ def main() -> None:
     teams = ([args.team] if args.team else
              [r["team"] for r in con.execute(
                  "SELECT DISTINCT team FROM robot_tracks WHERE team IS NOT NULL")])
+    rm = robot_match_features(get_game(args.game)) if len(teams) > 1 else None
     for t in teams:
-        p = render_team(t, args.game)
+        p = render_team(t, args.game, rm=rm)
         print(f"{t}: {p if p else 'no data'}")
 
 

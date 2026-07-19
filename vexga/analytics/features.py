@@ -16,7 +16,11 @@ def robot_match_features(game: GameConfig | None = None) -> pl.DataFrame:
     con = connect()
     rows = con.execute(
         "SELECT rt.match_id, rt.slot, rt.team, rt.t, rt.x_in, rt.y_in, rt.conf,"
-        " m.red_score, m.blue_score, m.event_id"
+        # Official scores when present, else overlay-OCR finals (the only
+        # ground truth since the RobotEvents API shut down).
+        " COALESCE(m.red_score, m.ocr_red_score) AS red_score,"
+        " COALESCE(m.blue_score, m.ocr_blue_score) AS blue_score,"
+        " m.event_id"
         " FROM robot_tracks rt JOIN matches m ON m.id = rt.match_id"
         " WHERE rt.conf > 0 ORDER BY rt.match_id, rt.slot, rt.t"
     ).fetchall()
